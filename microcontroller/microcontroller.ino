@@ -25,15 +25,11 @@
 #include <BLE2902.h>
 
 BLECharacteristic *pCharacteristic;
-bool deviceConnected = false;
+BLEServer *pServer;
+int numberOfConnectedDevices = 0;
+bool isAdvertising = false;
 float txValue = 0;
 const int readPin = 32; // Use GPIO number. See ESP32 board pinouts
-const int LED = 2; // Could be different depending on the dev board. I used the DOIT ESP32 dev board.
-
-//std::string rxValue; // Could also make this a global var to access it in loop()
-
-// See the following for generating UUIDs:
-// https://www.uuidgenerator.net/
 
 #define SERVICE_UUID           "6E400001-B5A3-F393-E0A9-E50E24DCCA9E" // UART service UUID
 #define CHARACTERISTIC_UUID_RX "6E400002-B5A3-F393-E0A9-E50E24DCCA9E"
@@ -41,11 +37,13 @@ const int LED = 2; // Could be different depending on the dev board. I used the 
 
 class MyServerCallbacks: public BLEServerCallbacks {
     void onConnect(BLEServer* pServer) {
-      deviceConnected = true;
+      ++numberOfConnectedDevices;
     };
 
     void onDisconnect(BLEServer* pServer) {
-      deviceConnected = false;
+      if (numberOfConnectedDevices > 0) {
+        --numberOfConnectedDevices;
+      }
     }
 };
 
@@ -57,24 +55,17 @@ class MyCallbacks: public BLECharacteristicCallbacks {
         Serial.println("*********");
         Serial.print("Received Value: ");
 
+        if(rxValue[0] == 'a') {
+          pServer->getAdvertising()->start();
+          isAdvertising = true;
+          Serial.println("Advertising started...");
+        }
+
         for (int i = 0; i < rxValue.length(); i++) {
           Serial.print(rxValue[i]);
         }
 
         Serial.println();
-
-        // Do stuff based on the command received from the app
-        if (rxValue.find("A") != -1) { 
-          Serial.print("Turning ON!");
-          digitalWrite(LED, HIGH);
-        }
-        else if (rxValue.find("B") != -1) {
-          Serial.print("Turning OFF!");
-          digitalWrite(LED, LOW);
-        }
-
-        Serial.println();
-        Serial.println("*********");
       }
     }
 };
@@ -82,13 +73,11 @@ class MyCallbacks: public BLECharacteristicCallbacks {
 void setup() {
   Serial.begin(115200);
 
-  pinMode(LED, OUTPUT);
-
   // Create the BLE Device
-  BLEDevice::init("ESP32 UART Test"); // Give it a name
+  BLEDevice::init("Smart Fishing Alarm"); // Give it a name
 
   // Create the BLE Server
-  BLEServer *pServer = BLEDevice::createServer();
+  pServer = BLEDevice::createServer();
   pServer->setCallbacks(new MyServerCallbacks());
 
   // Create the BLE Service
@@ -114,39 +103,31 @@ void setup() {
 
   // Start advertising
   pServer->getAdvertising()->start();
-  Serial.println("Waiting a client connection to notify...");
+  isAdvertising = true;
+  Serial.println("Advertising started...");
 }
 
 void loop() {
-  if (deviceConnected) {
-    // Fabricate some arbitrary junk for now...
+  if (numberOfConnectedDevices > 0) {
+    isAdvertising = false;
+    Serial.println("Advertising stopped...");
+  
     txValue = analogRead(readPin) / 3.456; // This could be an actual sensor reading!
 
     // Let's convert the value to a char array:
     char txString[8]; // make sure this is big enuffz
     dtostrf(txValue, 1, 2, txString); // float_val, min_width, digits_after_decimal, char_buffer
-    
-//    pCharacteristic->setValue(&txValue, 1); // To send the integer value
-//    pCharacteristic->setValue("Hello!"); // Sending a test message
-    pCharacteristic->setValue(txString);
-    
+
+    pCharacteristic->setValue(txString);    
     pCharacteristic->notify(); // Send the value to the app!
+
     Serial.print("*** Sent Value: ");
     Serial.print(txString);
     Serial.println(" ***");
-
-    // You can add the rxValue checks down here instead
-    // if you set "rxValue" as a global var at the top!
-    // Note you will have to delete "std::string" declaration
-    // of "rxValue" in the callback function.
-//    if (rxValue.find("A") != -1) { 
-//      Serial.println("Turning ON!");
-//      digitalWrite(LED, HIGH);
-//    }
-//    else if (rxValue.find("B") != -1) {
-//      Serial.println("Turning OFF!");
-//      digitalWrite(LED, LOW);
-//    }
+  } else if(!isAdvertising) {
+    pServer->getAdvertising()->start();
+    isAdvertising = true;
+    Serial.println("Advertising started...");
   }
   delay(1000);
 }
