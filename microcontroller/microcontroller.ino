@@ -74,7 +74,7 @@ void setup() {
   Serial.begin(115200);
 
   // Create the BLE Device
-  BLEDevice::init("Smart Fishing Alarm"); // Give it a name
+  BLEDevice::init("Smart Fishing Alarm1"); // Give it a name
 
   // Create the BLE Server
   pServer = BLEDevice::createServer();
@@ -102,6 +102,8 @@ void setup() {
   pService->start();
 
   // Start advertising
+  BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
+  pAdvertising->addServiceUUID(SERVICE_UUID);
   pServer->getAdvertising()->start();
   isAdvertising = true;
   Serial.println("Advertising started...");
